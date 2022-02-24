@@ -588,7 +588,39 @@ class StrucCmtChangedEvent(Event):
             ida_struct.set_struc_cmt(sptr.id, cmt, self.repeatable_cmt)
 
 
-class StrucMemberCreatedEvent(Event):
+class StrucMemberEvent(Event):
+    """
+    Base class inherited by all "struc_member_*" events
+    """
+    @staticmethod
+    def _get_sptr(struct_name):
+        struc_id = ida_struct.get_struc_id(struct_name)
+        return ida_struct.get_struc(struc_id)
+
+    @staticmethod
+    def _get_member_type(type_flag, extra):
+        mt = ida_nalt.opinfo_t()
+        if ida_bytes.is_struct(type_flag):
+            mt.tid = ida_struct.get_struc_id(extra['struc_name'])
+        if type_flag & ida_bytes.off_flag():
+            mt.ri = ida_nalt.refinfo_t()
+            mt.ri.init(
+                extra['flags'],
+                extra['base'],
+                extra['target'],
+                extra['tdelta'],
+            )
+        if type_flag & ida_bytes.enum_flag():
+            mt.ec.serial = extra['serial']
+            # Backwards compatibility: Past versions didn't store the tid
+            mt.ec.tid = extra.get('tid', 0)
+        if ida_bytes.is_strlit(type_flag):
+            mt.strtype = extra['strtype']
+
+        return mt
+
+
+class StrucMemberCreatedEvent(StrucMemberEvent):
     __event__ = "struc_member_created"
 
     def __init__(self, sname, fieldname, offset, flag, nbytes, extra):
@@ -601,21 +633,8 @@ class StrucMemberCreatedEvent(Event):
         self.extra = extra
 
     def __call__(self):
-        mt = ida_nalt.opinfo_t()
-        if ida_bytes.is_struct(self.flag):
-            mt.tid = ida_struct.get_struc_id(self.extra["struc_name"])
-        if ida_bytes.is_off0(self.flag) or ida_bytes.is_off1(self.flag):
-            mt.ri = ida_nalt.refinfo_t()
-            mt.ri.init(
-                self.extra["flags"],
-                self.extra["base"],
-                self.extra["target"],
-                self.extra["tdelta"],
-            )
-        if ida_bytes.is_strlit(self.flag):
-            mt.strtype = self.extra["strtype"]
-        struc = ida_struct.get_struc_id(self.sname)
-        sptr = ida_struct.get_struc(struc)
+        sptr = self._get_sptr(self.sname)
+        mt = self._get_member_type(self.flag, self.extra)
         ida_struct.add_struc_member(
             sptr,
             self.fieldname,
@@ -626,7 +645,7 @@ class StrucMemberCreatedEvent(Event):
         )
 
 
-class StrucMemberChangedEvent(Event):
+class StrucMemberChangedEvent(StrucMemberEvent):
     __event__ = "struc_member_changed"
 
     def __init__(self, sname, soff, eoff, flag, extra):
@@ -638,27 +657,14 @@ class StrucMemberChangedEvent(Event):
         self.extra = extra
 
     def __call__(self):
-        mt = ida_nalt.opinfo_t()
-        if ida_bytes.is_struct(self.flag):
-            mt.tid = ida_struct.get_struc_id(self.extra["struc_name"])
-        if ida_bytes.is_off0(self.flag) or ida_bytes.is_off1(self.flag):
-            mt.ri = ida_nalt.refinfo_t()
-            mt.ri.init(
-                self.extra["flags"],
-                self.extra["base"],
-                self.extra["target"],
-                self.extra["tdelta"],
-            )
-        if ida_bytes.is_strlit(self.flag):
-            mt.strtype = self.extra["strtype"]
-        struc = ida_struct.get_struc_id(self.sname)
-        sptr = ida_struct.get_struc(struc)
+        sptr = self._get_sptr(self.sname)
+        mt = self._get_member_type(self.flag, self.extra)
         ida_struct.set_member_type(
             sptr, self.soff, self.flag, mt, self.eoff - self.soff
         )
 
 
-class StrucMemberDeletedEvent(Event):
+class StrucMemberDeletedEvent(StrucMemberEvent):
     __event__ = "struc_member_deleted"
 
     def __init__(self, sname, offset):
@@ -667,12 +673,11 @@ class StrucMemberDeletedEvent(Event):
         self.offset = offset
 
     def __call__(self):
-        struc = ida_struct.get_struc_id(self.sname)
-        sptr = ida_struct.get_struc(struc)
+        sptr = self._get_sptr(self.sname)
         ida_struct.del_struc_member(sptr, self.offset)
 
 
-class StrucMemberRenamedEvent(Event):
+class StrucMemberRenamedEvent(StrucMemberEvent):
     __event__ = "struc_member_renamed"
 
     def __init__(self, sname, offset, newname):
@@ -682,8 +687,7 @@ class StrucMemberRenamedEvent(Event):
         self.newname = newname
 
     def __call__(self):
-        struc = ida_struct.get_struc_id(self.sname)
-        sptr = ida_struct.get_struc(struc)
+        sptr = self._get_sptr(self.sname)
         ida_struct.set_member_name(
             sptr, self.offset, self.newname
         )
@@ -753,13 +757,17 @@ class SegmAddedEvent(Event):
 class SegmDeletedEvent(Event):
     __event__ = "segm_deleted_event"
 
-    def __init__(self, ea):
+    def __init__(self, ea, flags):
         super(SegmDeletedEvent, self).__init__()
         self.ea = ea
+        self.flags = flags
 
     def __call__(self):
+        if not hasattr(self, 'flags'):
+            # segm_deleted events created prior to IDA 7.7 lack flags
+            self.flags = 0
         ida_segment.del_segm(
-            self.ea, ida_segment.SEGMOD_KEEP | ida_segment.SEGMOD_SILENT
+            self.ea, self.flags | ida_segment.SEGMOD_SILENT
         )
 
 
@@ -839,7 +847,7 @@ class SegmMoved(Event):
         self.changed_netmap = changed_netmap
 
     def __call__(self):
-        flags = ida_segment.MFS_NETMAP if self.changed_netmap else 0
+        flags = ida_segment.MSF_NETNODES if not self.changed_netmap else 0
         s = ida_segment.getseg(self.from_ea)
         ida_segment.move_segm(s, self.to_ea, flags)
 

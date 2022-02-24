@@ -392,7 +392,7 @@ class StatusWidget(QWidget):
         """Called when the widget is being painted."""
         # Adjust the buffer size according to the pixel ratio
         dpr = self.devicePixelRatioF()
-        buffer = QPixmap(self.width() * dpr, self.height() * dpr)
+        buffer = QPixmap(int(self.width() * dpr), int(self.height() * dpr))
         buffer.setDevicePixelRatio(dpr)
         buffer.fill(Qt.transparent)
 

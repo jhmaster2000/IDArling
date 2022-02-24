@@ -110,9 +110,12 @@ class Network(Module):
         # Connect the socket
         sock.settimeout(0)  # No timeout
         sock.setblocking(0)  # No blocking
-        ret = sock.connect_ex((host, port))
-        if ret != 0 and ret != errno.EINPROGRESS and ret != errno.EWOULDBLOCK:
-            self._client.disconnect()
+        try:
+            sock.connect((host, port))
+        except OSError as e:
+            if e.errno not in (errno.EINPROGRESS, errno.EWOULDBLOCK):
+                self._plugin._logger.exception(e)
+                self._client.disconnect()
 
     def disconnect(self):
         """Disconnect from the current server."""

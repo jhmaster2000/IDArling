@@ -155,12 +155,16 @@ class Plugin(ida_idaapi.plugin_t):
         self._logger.info("Initialized properly")
         keep = ida_idaapi.PLUGIN_KEEP
 
+        self._auto_connect()
+
+        return keep
+
+    def _auto_connect(self):
         for server in self._config["servers"]:
             if "auto_connect" in server and server["auto_connect"]:
-                self.logger.info("Attempting to auto-connect to %s:%d" %
-                        (server["host"], server["port"]))
+                self.logger.info("Attempting to auto-connect to {}:{}".format(
+                                 server["host"], server["port"]))
                 self._network.connect(server)
-        return keep
 
     def _print_banner(self):
         """Print the banner that you see in the console."""

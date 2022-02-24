@@ -334,9 +334,9 @@ class IDBHooks(Hooks, ida_idp.IDB_Hooks):
                         sname, fieldname, offset, flag, nbytes, extra
                     )
                 )
-            # Is it really possible to create an enum?
             elif flag & ida_bytes.enum_flag():
                 extra["serial"] = mt.ec.serial
+                extra["tid"] = mt.ec.tid
                 self._send_packet(
                     evt.StrucMemberCreatedEvent(
                         sname, fieldname, offset, flag, nbytes, extra
@@ -375,7 +375,6 @@ class IDBHooks(Hooks, ida_idp.IDB_Hooks):
         extra = {}
 
         sname = ida_struct.get_struc_name(sptr.id)
-        soff = 0 if mptr.unimem() else mptr.soff
         flag = mptr.flag
         mt = ida_nalt.opinfo_t()
         is_not_data = ida_struct.retrieve_member_info(mt, mptr)
@@ -387,14 +386,15 @@ class IDBHooks(Hooks, ida_idp.IDB_Hooks):
                 extra["flags"] = mt.ri.flags
                 self._send_packet(
                     evt.StrucMemberChangedEvent(
-                        sname, soff, mptr.eoff, flag, extra
+                        sname, mptr.soff, mptr.eoff, flag, extra
                     )
                 )
             elif flag & ida_bytes.enum_flag():
                 extra["serial"] = mt.ec.serial
+                extra["tid"] = mt.ec.tid
                 self._send_packet(
                     evt.StrucMemberChangedEvent(
-                        sname, soff, mptr.eoff, flag, extra
+                        sname, mptr.soff, mptr.eoff, flag, extra
                     )
                 )
             elif flag & ida_bytes.stru_flag():
@@ -403,13 +403,13 @@ class IDBHooks(Hooks, ida_idp.IDB_Hooks):
                     extra["strtype"] = mt.strtype
                 self._send_packet(
                     evt.StrucMemberChangedEvent(
-                        sname, soff, mptr.eoff, flag, extra
+                        sname, mptr.soff, mptr.eoff, flag, extra
                     )
                 )
         else:
             self._send_packet(
                 evt.StrucMemberChangedEvent(
-                    sname, soff, mptr.eoff, flag, extra
+                    sname, mptr.soff, mptr.eoff, flag, extra
                 )
             )
         return 0
@@ -444,9 +444,9 @@ class IDBHooks(Hooks, ida_idp.IDB_Hooks):
         )
         return 0
 
-    # This hook lack of disable addresses option
-    def segm_deleted(self, start_ea, end_ea):
-        self._send_packet(evt.SegmDeletedEvent(start_ea))
+    # The flags argument was added in IDA 7.7
+    def segm_deleted(self, start_ea, end_ea, flags=0):
+        self._send_packet(evt.SegmDeletedEvent(start_ea, flags))
         return 0
 
     def segm_start_changed(self, s, oldstart):
