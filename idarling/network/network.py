@@ -11,6 +11,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 import errno
+import os
 import socket
 import ssl
 
@@ -97,7 +98,7 @@ class Network(Module):
             ctx.check_hostname = False
             ctx.verify_mode = ssl.CERT_NONE
             sock = ctx.wrap_socket(
-                sock, server_hostname=host, do_handshake_on_connect=False
+                sock, server_hostname=host, do_handshake_on_connect=True
             )
         self._client.wrap_socket(sock)
 
@@ -111,11 +112,12 @@ class Network(Module):
         sock.settimeout(0)  # No timeout
         sock.setblocking(0)  # No blocking
         try:
-            sock.connect((host, port))
+            err = sock.connect_ex((host, port))
+            if err not in (0, errno.EINPROGRESS, errno.EWOULDBLOCK):
+                raise OSError(err, os.strerror(err), '')
         except OSError as e:
-            if e.errno not in (errno.EINPROGRESS, errno.EWOULDBLOCK):
-                self._plugin._logger.exception(e)
-                self._client.disconnect()
+            self._plugin._logger.exception(e)
+            self._client.disconnect()
 
     def disconnect(self):
         """Disconnect from the current server."""

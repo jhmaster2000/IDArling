@@ -149,21 +149,11 @@ class ClientSocket(QObject):
 
         # Check if the connection was successful
         ret = self._socket.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
-        if ret != 0 and ret != errno.EINPROGRESS and ret != errno.EWOULDBLOCK:
-            self.disconnect(socket.error(ret, os.strerror(ret)))
+        if ret != 0:
+            if ret != errno.EINPROGRESS and ret != errno.EWOULDBLOCK:
+                self.disconnect(socket.error(ret, os.strerror(ret)))
             return False
         else:
-            # Do SSL handshake if needed
-            if isinstance(self._socket, ssl.SSLSocket):
-                try:
-                    self._socket.do_handshake()
-                except socket.error as e:
-                    if not isinstance(
-                        e, ssl.SSLWantReadError
-                    ) and not isinstance(e, ssl.SSLWantReadError):
-                        self.disconnect(e)
-                    return False
-
             self._connected = True
             self._logger.info("Connected")
             return True
